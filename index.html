@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Takeda DS Player Crash Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0a0f1e;--surface:rgba(255,255,255,0.03);--border:rgba(255,255,255,0.07);
+    --text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;
+    --red:#ef4444;--orange:#f97316;--yellow:#eab308;--green:#22c55e;--blue:#3b82f6;--purple:#a855f7;--cyan:#06b6d4;
+    --indigo:#4f46e5;
+  }
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;min-height:100vh}
+  
+  /* HEADER */
+  .header{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);border-bottom:1px solid rgba(99,102,241,0.2);padding:24px 32px}
+  .header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .live-dot{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 10px var(--red);animation:pulse 2s infinite;display:inline-block;margin-right:8px}
+  .live-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--red);letter-spacing:2px;text-transform:uppercase}
+  h1{font-size:26px;font-weight:800;letter-spacing:-0.5px;margin-top:6px}
+  .header-sub{font-size:12px;color:var(--dim);margin-top:3px}
+  .header-count{text-align:right}
+  .big-num{font-size:48px;font-weight:900;color:var(--red);font-family:'DM Mono',monospace;line-height:1}
+  .big-label{font-size:12px;color:var(--dim)}
+  
+  /* TABS */
+  .tabs-wrap{max-width:1100px;margin:0 auto;padding:28px 32px 0}
+  .tabs{display:flex;gap:4px;background:rgba(255,255,255,0.03);border-radius:10px;padding:4px;width:fit-content;margin-bottom:28px}
+  .tab{padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;transition:all 0.2s;background:transparent;color:var(--dim)}
+  .tab.active{background:rgba(99,102,241,0.25);color:#a5b4fc}
+  
+  /* CONTENT */
+  .content{display:none;max-width:1100px;margin:0 auto;padding:0 32px 60px}
+  .content.active{display:block}
+  
+  /* STAT CARDS */
+  .stat-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 22px;flex:1;min-width:130px}
+  .stat-val{font-size:34px;font-weight:800;font-family:'DM Mono',monospace;letter-spacing:-1px}
+  .stat-label{font-size:12px;color:var(--muted);margin-top:3px;font-weight:500}
+  .stat-sub{font-size:11px;color:var(--dim);margin-top:2px}
+  
+  /* CHARTS */
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px}
+  .chart-title{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:18px}
+  .chart-wrap{position:relative}
+  
+  /* LEGEND */
+  .legend{display:flex;flex-direction:column;gap:7px;margin-top:14px}
+  .legend-item{display:flex;align-items:center;gap:9px}
+  .legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+  .legend-label{font-size:12px;color:var(--muted);flex:1}
+  .legend-val{font-size:13px;font-weight:700;font-family:'DM Mono',monospace}
+  
+  /* ALERT BOX */
+  .alert{padding:10px 14px;border-radius:8px;font-size:12px;margin-top:12px}
+  .alert-orange{background:rgba(249,115,22,0.1);border:1px solid rgba(249,115,22,0.2);color:#fdba74}
+  .alert-indigo{background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#a5b4fc}
+  
+  /* MACHINE TABLE */
+  .table-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-top:22px}
+  table{width:100%;border-collapse:collapse}
+  thead tr{background:rgba(255,255,255,0.05)}
+  th{padding:11px 15px;text-align:left;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;font-weight:700}
+  td{padding:11px 15px;font-size:13px;border-top:1px solid rgba(255,255,255,0.04)}
+  tr:nth-child(even){background:rgba(255,255,255,0.01)}
+  .mono{font-family:'DM Mono',monospace}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px}
+  
+  /* FINDINGS */
+  .finding{border-radius:13px;padding:22px;margin-bottom:14px;cursor:pointer;transition:all 0.2s}
+  .finding:hover{filter:brightness(1.05)}
+  .finding-header{display:flex;align-items:flex-start;gap:14px}
+  .finding-icon{font-size:26px;flex-shrink:0}
+  .finding-body{flex:1}
+  .finding-severity{font-size:11px;font-weight:800;padding:3px 10px;border-radius:4px;letter-spacing:1px;display:inline-block;margin-bottom:8px}
+  .finding-count{font-size:12px;color:var(--dim);font-family:'DM Mono',monospace;margin-left:10px}
+  .finding-title{font-size:16px;font-weight:700;color:#f1f5f9;margin-bottom:7px}
+  .finding-detail{font-size:13px;color:var(--muted);line-height:1.65}
+  .finding-toggle{font-size:12px;color:var(--dim);margin-top:10px}
+  .steps{margin-top:14px;padding:15px 18px;background:rgba(0,0,0,0.3);border-radius:9px;border:1px solid rgba(255,255,255,0.05);display:none}
+  .steps.open{display:block}
+  .steps-title{font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+  .step{display:flex;gap:10px;margin-bottom:9px;align-items:flex-start}
+  .step-num{width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+  .step-text{font-size:13px;color:#cbd5e1;line-height:1.6}
+  
+  /* AI ASSIST */
+  .ai-box{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:13px;padding:22px;margin-bottom:22px}
+  .ai-title{font-size:16px;font-weight:700;color:#a5b4fc;margin-bottom:6px}
+  .ai-sub{font-size:13px;color:var(--dim);margin-bottom:16px}
+  .ai-input-row{display:flex;gap:10px}
+  .ai-input{flex:1;padding:11px 15px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none}
+  .ai-input:focus{border-color:rgba(99,102,241,0.5)}
+  .ai-btn{padding:11px 22px;background:var(--indigo);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;font-family:'DM Sans',sans-serif;transition:background 0.2s}
+  .ai-btn:hover{background:#4338ca}
+  .ai-btn:disabled{background:#334155;cursor:not-allowed}
+  .quick-prompts{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap}
+  .qp{padding:6px 11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s}
+  .qp:hover{background:rgba(255,255,255,0.09);color:var(--text)}
+  .ai-response{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:22px}
+  .ai-response-label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:12px}
+  .ai-response-text{font-size:14px;color:#cbd5e1;line-height:1.8;white-space:pre-wrap}
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;margin-right:8px;vertical-align:middle}
+  
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-inner">
+    <div>
+      <div><span class="live-dot"></span><span class="live-label">Live Monitoring</span></div>
+      <h1>Takeda DS Player Crash Intelligence</h1>
+      <div class="header-sub">12 devices &nbsp;·&nbsp; 30-day window &nbsp;·&nbsp; Dell OptiPlex Fleet</div>
+    </div>
+    <div class="header-count">
+      <div class="big-num">73</div>
+      <div class="big-label">total crash events</div>
+    </div>
+  </div>
+</div>
+
+<div class="tabs-wrap">
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('overview',this)">Overview</button>
+    <button class="tab" onclick="switchTab('machines',this)">Machines</button>
+    <button class="tab" onclick="switchTab('fixes',this)">Findings &amp; Fixes</button>
+    <button class="tab" onclick="switchTab('ai',this)">🤖 AI Assist</button>
+  </div>
+</div>
+
+<!-- ============ OVERVIEW ============ -->
+<div id="tab-overview" class="content active">
+  <div class="stat-row">
+    <div class="stat-card"><div class="stat-val" style="color:var(--red)">73</div><div class="stat-label">Total Crash Events</div><div class="stat-sub">All event types combined</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--orange)">12</div><div class="stat-label">Affected Machines</div><div class="stat-sub">All Dell OptiPlex</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--yellow)">34</div><div class="stat-label">Kernel Crashes</div><div class="stat-sub">Event ID 41 incidents</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--purple)">37%</div><div class="stat-label">Outdated BIOS</div><div class="stat-sub">Still on v1.30.0</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--red)">4</div><div class="stat-label">Need SFC Scan</div><div class="stat-sub">Triggered Startup Repair</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--cyan)">6.1</div><div class="stat-label">Avg Crashes</div><div class="stat-sub">Per machine / 30 days</div></div>
+  </div>
+
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">Event Type Breakdown</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="donutChart"></canvas></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div><div class="legend-label">Event 41 — Kernel Power (unexpected shutdown)</div><div class="legend-val" style="color:var(--red)">34</div></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div><div class="legend-label">Event 6008 — Bad shutdown logged on boot</div><div class="legend-val" style="color:var(--orange)">34</div></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div><div class="legend-label">Event 1001 — Windows Startup Repair triggered</div><div class="legend-val" style="color:var(--blue)">5</div></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Crash Timeline — 30 Days</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="timelineChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">BIOS Version Distribution</div>
+      <div class="chart-wrap" style="height:140px"><canvas id="biosChart"></canvas></div>
+      <div class="alert alert-orange" style="margin-top:12px">⚠️ 27 crash events from machines on outdated BIOS 1.30.0 — update recommended</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">OS Build Distribution</div>
+      <div class="chart-wrap" style="height:140px"><canvas id="osChart"></canvas></div>
+      <div class="alert alert-indigo" style="margin-top:12px">ℹ️ Both builds equally affected — this is not an OS version issue</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MACHINES ============ -->
+<div id="tab-machines" class="content">
+  <div class="chart-card" style="margin-bottom:22px">
+    <div class="chart-title">Crashes Per Machine</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="machineChart"></canvas></div>
+  </div>
+  <div class="table-card">
+    <table>
+      <thead><tr><th>Hostname</th><th>Crashes</th><th>Risk</th><th>BIOS</th><th>OS Build</th><th>Action Needed</th></tr></thead>
+      <tbody id="machineTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============ FIXES ============ -->
+<div id="tab-fixes" class="content">
+  <div class="alert alert-indigo" style="margin-bottom:20px">
+    🔍 Analysis based on 73 real crash events from 12 Takeda DS machines. Click any finding to expand remediation steps.
+  </div>
+  <div id="findingsContainer"></div>
+</div>
+
+<!-- ============ AI ASSIST ============ -->
+<div id="tab-ai" class="content">
+  <div class="ai-box">
+    <div class="ai-title">🤖 Ask AI About Your Crash Data</div>
+    <div class="ai-sub">Claude has full context of all 73 crash events. Ask anything about the data, remediation, or next steps.</div>
+    <div class="ai-input-row">
+      <input id="aiInput" class="ai-input" type="text" placeholder="e.g. Which machines should I prioritize? Write a GoTo Resolve script to update BIOS..." onkeydown="if(event.key==='Enter')askAI()">
+      <button class="ai-btn" id="aiBtn" onclick="askAI()">Ask</button>
+    </div>
+    <div class="quick-prompts">
+      <button class="qp" onclick="setQ('Which machines are at highest risk of full OS failure?')">Which machines are at highest risk?</button>
+      <button class="qp" onclick="setQ('Write a PowerShell script to run sfc /scannow remotely on DSD-29ZFWV3, DSD-J9ZFWV3, DSD-F9ZFWV3 and DSD-FRV9B24')">Write SFC script</button>
+      <button class="qp" onclick="setQ('What caused the January 29th crash cluster across 6 machines?')">Explain Jan 29 cluster</button>
+      <button class="qp" onclick="setQ('What BIOS settings should I change to improve crash recovery and AC power behavior?')">BIOS settings to change</button>
+    </div>
+  </div>
+  <div id="aiResponseBox" style="display:none" class="ai-response">
+    <div class="ai-response-label">AI Response</div>
+    <div id="aiResponseText" class="ai-response-text"></div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+const machines = [
+  {host:"DSD-29ZFWV3",crashes:12,bios:"1.30.0",os:"26200",needsRepair:true},
+  {host:"DSD-J9ZFWV3",crashes:11,bios:"1.33.0",os:"26200",needsRepair:true},
+  {host:"DSD-F9ZFWV3",crashes:9, bios:"1.30.0",os:"26200",needsRepair:true},
+  {host:"DSD-D9ZFWV3",crashes:8, bios:"1.33.0",os:"26100",needsRepair:false},
+  {host:"DSD-2BZFWV3",crashes:6, bios:"1.30.0",os:"26100",needsRepair:false},
+  {host:"DSD-GQV9B24",crashes:6, bios:"1.33.0",os:"26100",needsRepair:false},
+  {host:"DSD-FRV9B24",crashes:5, bios:"1.33.0",os:"26100",needsRepair:true},
+  {host:"DSD-C9ZFWV3",crashes:4, bios:"1.33.0",os:"26100",needsRepair:false},
+  {host:"DSD-FSV9B24",crashes:4, bios:"1.33.0",os:"26100",needsRepair:false},
+  {host:"DSD-G9ZFWV3",crashes:4, bios:"1.33.0",os:"26200",needsRepair:false},
+  {host:"DSD-1BZFWV3",crashes:2, bios:"1.33.0",os:"26200",needsRepair:false},
+  {host:"DSD-HS225K3",crashes:2, bios:"2.27.0",os:"26200",needsRepair:false},
+];
+
+const findings = [
+  {
+    sev:"CRITICAL",color:"#ef4444",icon:"⚡",
+    title:"Widespread Unexpected Power Loss / Kernel Panics",
+    count:"68 events (Event 41 + 6008)",
+    detail:"100% of crashes are Kernel-Power Event 41 + Event 6008 — every machine is losing power without a clean shutdown. The OS never gets a chance to write a shutdown reason. This points to hardware-level power interruption, NOT software or application crashes.",
+    steps:[
+      "Check power strips and UPS devices at each display location — shared circuits may be browning out overnight",
+      "Enable Fast Startup: Control Panel → Power Options → Choose what power buttons do → Turn on fast startup",
+      "Set BIOS 'AC Recovery' to 'Power On' so machines auto-restart after power outages",
+      "Review if AV/display equipment on the same circuit causes surges when powering on"
+    ]
+  },
+  {
+    sev:"HIGH",color:"#f97316",icon:"🔧",
+    title:"Outdated BIOS on 37% of Fleet",
+    count:"27 crash events on BIOS 1.30.0 machines",
+    detail:"Machines on BIOS 1.30.0 account for 37% of all events. Current version is 1.33.0 (released Dec 2025). Dell BIOS updates frequently include power management and stability fixes — upgrading may directly reduce crash frequency.",
+    steps:[
+      "Download BIOS 1.33.0 from dell.com/support — search OptiPlex Micro 7010",
+      "Deploy via GoTo Resolve to: DSD-29ZFWV3, DSD-F9ZFWV3, DSD-2BZFWV3",
+      "Run silently: dell-bios-update.exe /silent /reboot",
+      "Verify after update: (Get-WmiObject -Class Win32_BIOS).SMBIOSBIOSVersion"
+    ]
+  },
+  {
+    sev:"HIGH",color:"#f97316",icon:"🔁",
+    title:"4 Machines Required Windows Startup Repair",
+    count:"5 Event ID 1001 occurrences",
+    detail:"DSD-29ZFWV3, DSD-J9ZFWV3, DSD-F9ZFWV3, and DSD-FRV9B24 triggered Windows Startup Repair after crashes. This means abrupt shutdowns corrupted the file system enough that Windows couldn't boot normally. These machines are at highest risk of full OS failure.",
+    steps:[
+      "Run via GoTo Resolve on all 4 machines: sfc /scannow",
+      "Then run: DISM /Online /Cleanup-Image /RestoreHealth",
+      "Consider reimaging DSD-29ZFWV3 — 12 total crashes + 2 Startup Repair events",
+      "Enable BitLocker recovery key escrow in case a drive fails mid-crash"
+    ]
+  },
+  {
+    sev:"MEDIUM",color:"#eab308",icon:"📈",
+    title:"DSD-29ZFWV3 is a Repeat Offender",
+    count:"12 crashes — highest in fleet",
+    detail:"DSD-29ZFWV3 has crashed 12 times in 30 days — roughly every 2.5 days. It also has outdated BIOS 1.30.0 and has needed Startup Repair twice. This machine needs hands-on attention before it fails completely.",
+    steps:[
+      "Physically inspect the power connection and outlet at this machine's location",
+      "Update BIOS to 1.33.0 as the first remediation step",
+      "Check recent Event Log: Get-WinEvent -LogName System -MaxEvents 50",
+      "If crashes continue after BIOS update, replace proactively — it is already failing"
+    ]
+  },
+  {
+    sev:"LOW",color:"#3b82f6",icon:"📅",
+    title:"Crash Cluster on January 29th",
+    count:"12 crashes across 6 machines in 40 minutes",
+    detail:"6 machines all crashed on Jan 29 between 8:13 AM and 9:14 AM — a 40-minute window. This is a strong indicator of a facility-level power event (brief outage, sag, or circuit overload) at the Takeda site that morning.",
+    steps:[
+      "Contact Takeda facilities team — ask about any power event on Jan 29 morning",
+      "Review UPS logs for that time window if available",
+      "Ensure all DS players are on battery-backed UPS, not raw wall outlets",
+      "Add surge protectors rated for signage equipment (minimum 2700 joules)"
+    ]
+  }
+];
+
+// ─── CHART DEFAULTS ─────────────────────────────────────────────────────────
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+Chart.defaults.font.family = "'DM Sans', system-ui, sans-serif";
+
+// ─── CHARTS ─────────────────────────────────────────────────────────────────
+function buildCharts(){
+  // Donut
+  new Chart(document.getElementById('donutChart'),{
+    type:'doughnut',
+    data:{labels:['Event 41','Event 6008','Event 1001'],datasets:[{data:[34,34,5],backgroundColor:['#ef4444','#f97316','#3b82f6'],borderWidth:3,borderColor:'#0f172a',hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.label+': '+ctx.raw+' events'}}},cutout:'62%'}
+  });
+
+  // Timeline
+  const tlLabels=['Jan 29','Feb 2','Feb 5','Feb 6','Feb 9','Feb 10','Feb 14','Feb 16','Feb 17','Feb 18','Feb 19','Feb 20','Feb 23','Feb 24','Feb 26'];
+  const tlData=[12,8,4,6,3,2,8,4,10,6,4,8,3,5,6];
+  new Chart(document.getElementById('timelineChart'),{
+    type:'line',
+    data:{labels:tlLabels,datasets:[{label:'Crashes',data:tlData,borderColor:'#ef4444',backgroundColor:'rgba(239,68,68,0.1)',fill:true,tension:0.3,pointBackgroundColor:'#ef4444',pointRadius:3,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{maxRotation:45,font:{size:10}}},y:{ticks:{font:{size:10}},beginAtZero:true}}}
+  });
+
+  // BIOS
+  new Chart(document.getElementById('biosChart'),{
+    type:'bar',
+    data:{labels:['1.30.0 (outdated)','1.33.0 (current)','2.27.0'],datasets:[{data:[27,44,2],backgroundColor:['#f97316','#22c55e','#06b6d4'],borderRadius:5,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10}},beginAtZero:true}}}
+  });
+
+  // OS
+  new Chart(document.getElementById('osChart'),{
+    type:'bar',
+    data:{labels:['Build 26100','Build 26200'],datasets:[{data:[33,40],backgroundColor:['#a855f7','#6366f1'],borderRadius:5,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:10}},beginAtZero:true}}}
+  });
+
+  // Machine bar chart
+  const mColors = machines.map(m=>m.crashes>=10?'#ef4444':m.crashes>=6?'#f97316':m.crashes>=4?'#eab308':'#3b82f6');
+  new Chart(document.getElementById('machineChart'),{
+    type:'bar',
+    data:{labels:machines.map(m=>m.host.replace('DSD-','')),datasets:[{label:'Crashes',data:machines.map(m=>m.crashes),backgroundColor:mColors,borderRadius:[4,4,0,0],borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${machines[ctx.dataIndex].host}: ${ctx.raw} crashes`}}},scales:{x:{ticks:{font:{size:10}}},y:{beginAtZero:true,ticks:{font:{size:10}}}}}
+  });
+}
+
+// ─── MACHINE TABLE ───────────────────────────────────────────────────────────
+function buildTable(){
+  const tbody = document.getElementById('machineTableBody');
+  machines.forEach(m=>{
+    const risk = m.crashes>=10?['CRITICAL','#ef4444']:m.crashes>=6?['HIGH','#f97316']:m.crashes>=4?['MEDIUM','#eab308']:['LOW','#3b82f6'];
+    const biosColor = m.bios==='1.30.0'?'#f97316':'#64748b';
+    const actions = [];
+    if(m.bios==='1.30.0') actions.push('<span style="color:#f97316">Update BIOS</span>');
+    if(m.needsRepair) actions.push('<span style="color:#ef4444">Run sfc /scannow</span>');
+    if(!actions.length) actions.push('<span style="color:#22c55e">✓ Monitor</span>');
+    tbody.innerHTML += `<tr>
+      <td class="mono">${m.host}</td>
+      <td class="mono" style="font-weight:700;color:${risk[1]}">${m.crashes}</td>
+      <td><span class="badge" style="color:${risk[1]};background:${risk[1]}22">${risk[0]}</span></td>
+      <td class="mono" style="color:${biosColor}">${m.bios}${m.bios==='1.30.0'?' ⚠️':''}</td>
+      <td class="mono" style="color:#64748b">${m.os}</td>
+      <td>${actions.join(' &nbsp; ')}</td>
+    </tr>`;
+  });
+}
+
+// ─── FINDINGS ───────────────────────────────────────────────────────────────
+function buildFindings(){
+  const container = document.getElementById('findingsContainer');
+  findings.forEach((f,i)=>{
+    const div = document.createElement('div');
+    div.className='finding';
+    div.style.cssText=`background:${f.color}11;border:1px solid ${f.color}33`;
+    div.innerHTML=`
+      <div class="finding-header">
+        <div class="finding-icon">${f.icon}</div>
+        <div class="finding-body">
+          <div>
+            <span class="finding-severity" style="color:${f.color};background:${f.color}22">${f.sev}</span>
+            <span class="finding-count">${f.count}</span>
+          </div>
+          <div class="finding-title">${f.title}</div>
+          <div class="finding-detail">${f.detail}</div>
+          <div class="steps" id="steps-${i}">
+            <div class="steps-title">Recommended Steps</div>
+            ${f.steps.map((s,j)=>`<div class="step"><div class="step-num" style="background:${f.color}33;color:${f.color}">${j+1}</div><div class="step-text">${s}</div></div>`).join('')}
+          </div>
+          <div class="finding-toggle" id="toggle-${i}">▼ Click to see fix steps</div>
+        </div>
+      </div>`;
+    div.onclick=()=>{
+      const steps=document.getElementById('steps-'+i);
+      const toggle=document.getElementById('toggle-'+i);
+      const open=steps.classList.toggle('open');
+      toggle.textContent=open?'▲ Click to collapse':'▼ Click to see fix steps';
+    };
+    container.appendChild(div);
+  });
+}
+
+// ─── TAB SWITCHING ───────────────────────────────────────────────────────────
+function switchTab(id, btn){
+  document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ─── AI ASSIST ───────────────────────────────────────────────────────────────
+function setQ(q){ document.getElementById('aiInput').value=q; }
+
+async function askAI(){
+  const query = document.getElementById('aiInput').value.trim();
+  if(!query) return;
+  const btn = document.getElementById('aiBtn');
+  const box = document.getElementById('aiResponseBox');
+  const text = document.getElementById('aiResponseText');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span>Thinking...';
+  box.style.display='block';
+  text.textContent='';
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system:`You are an expert Windows IT engineer analyzing crash telemetry for Takeda digital signage PCs.
+Data: 73 crash events across 12 Dell OptiPlex machines (Micro 7010 + one 3090).
+ALL crashes are Kernel-Power Event 41 + Event 6008 (unexpected power loss) — hardware-level power interruption.
+5 machines triggered Windows Startup Repair (Event 1001): DSD-29ZFWV3 (x2), DSD-J9ZFWV3 (x1), DSD-F9ZFWV3 (x1), DSD-FRV9B24 (x1).
+Top crashers: DSD-29ZFWV3=12, DSD-J9ZFWV3=11, DSD-F9ZFWV3=9, DSD-D9ZFWV3=8.
+37% of machines on outdated BIOS 1.30.0 (current: 1.33.0): DSD-29ZFWV3, DSD-F9ZFWV3, DSD-2BZFWV3.
+Jan 29 cluster: 12 crashes across 6 machines in 40 min window — likely facility power event.
+All machines: Windows 11 Pro, Intel i5-13500T, 15.7GB RAM, 360-380GB free disk, Intel UHD 770 driver v32.0.101.7077.
+Remote management via GoTo Resolve. Give concise, actionable technical advice with specific commands.`,
+        messages:[{role:'user',content:query}]
+      })
+    });
+    const data=await res.json();
+    text.textContent=data.content?.[0]?.text||'No response received.';
+  }catch(e){
+    text.textContent='Error connecting to AI. Please try again.';
+  }
+  btn.disabled=false;
+  btn.textContent='Ask';
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+buildCharts();
+buildTable();
+buildFindings();
+</script>
+</body>
+</html>
